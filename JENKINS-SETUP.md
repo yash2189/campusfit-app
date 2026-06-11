@@ -1,10 +1,44 @@
 # Jenkins Setup Guide
 
-Simple Jenkins setup for the pipeline assignment.
+Two setup methods - use whichever works for you.
 
 ---
 
-## Quick Setup (One Command)
+## Prerequisites
+
+- Docker installed
+- K8s cluster running (Minikube or k3s)
+
+---
+
+## Method 1: Docker Compose (Recommended)
+
+### 1. Start Jenkins
+
+```bash
+cd jenkins
+docker-compose up -d
+```
+
+Wait 2 minutes.
+
+### 2. Get Password
+
+```bash
+docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+```
+
+### 3. Open Jenkins
+
+http://localhost:8080
+
+Paste password → Install suggested plugins → Create admin user
+
+---
+
+## Method 2: Docker Run (Fallback)
+
+If Docker Compose doesn't work:
 
 ```bash
 docker run -d \
@@ -18,52 +52,7 @@ docker run -d \
   jenkins/jenkins:lts
 ```
 
-**Wait 2 minutes for Jenkins to start.**
-
----
-
-## Initial Setup
-
-### 1. Get Password
-```bash
-docker logs jenkins 2>&1 | grep -A 2 "Please use the following password"
-```
-
-Copy the password.
-
-### 2. Open Jenkins
-http://localhost:8080
-
-Paste password → Install suggested plugins → Create admin user
-
----
-
-## Install Required Plugins
-
-**Manage Jenkins → Plugins → Available plugins**
-
-Search and install:
-- Docker Pipeline
-- Kubernetes CLI Plugin
-
-Click "Install" → Check "Restart Jenkins when installation is complete"
-
----
-
-## Add Docker Hub Credentials
-
-**Manage Jenkins → Credentials → System → Global credentials → Add Credentials**
-
-- Kind: Username with password
-- Username: your-dockerhub-username
-- Password: your-dockerhub-password
-- ID: `dockerhub-credentials`
-
-Click "Create"
-
----
-
-## Install Tools in Jenkins
+Then install tools manually:
 
 ```bash
 # Install Docker CLI
@@ -78,62 +67,104 @@ chmod +x kubectl && \
 mv kubectl /usr/local/bin/
 "
 
-# Restart Jenkins
+# Install plugins
+docker exec jenkins bash -c "
+jenkins-plugin-cli --plugins docker-workflow kubernetes-cli
+"
+
+# Restart
 docker restart jenkins
 ```
 
-Wait 1 minute for restart.
+---
+
+## Add Docker Hub Credentials
+
+**Manage Jenkins → Credentials → System → Global credentials → Add**
+
+- Kind: Username with password
+- Username: your-dockerhub-username
+- Password: your-dockerhub-password
+- ID: `dockerhub-credentials`
 
 ---
 
-## Verify Setup
+## Verify
 
 ```bash
-# Check Docker
+# Docker works
 docker exec jenkins docker ps
 
-# Check kubectl
+# kubectl installed
+docker exec jenkins kubectl version --client
+
+# kubectl reaches cluster
 docker exec jenkins kubectl get nodes
 ```
 
-Both should work without errors.
+All should work.
 
 ---
 
 ## Troubleshooting
 
-### Jenkins UI not loading
+### kubectl can't connect (k3s only)
+
+k3s uses 127.0.0.1 which doesn't work from containers.
+
 ```bash
-docker logs jenkins
-# Wait 2 minutes if still starting
+# Get your IP
+ip addr show | grep "inet " | grep -v 127.0.0.1
+
+# Edit k3s config
+sudo nano /etc/rancher/k3s/k3s.yaml
+# Change server: https://127.0.0.1:6443
+# To: server: https://YOUR_IP:6443
+
+# Copy to standard location
+cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+
+# Restart Jenkins
+docker restart jenkins
+```
+
+### Minikube users
+
+Should work automatically.
+
+```bash
+minikube status  # ensure running
 ```
 
 ### Docker permission denied
+
 ```bash
-docker restart jenkins
-# Jenkins needs access to Docker socket
-```
-
-### kubectl can't connect
-
-**For Minikube:**
-```bash
-# Ensure Minikube is running
-minikube status
-```
-
-**For k3s:**
-```bash
-# Copy k3s config
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $USER ~/.kube/config
-
-# Restart Jenkins to pick up changes
 docker restart jenkins
 ```
 
 ---
 
-## Done
+## What's Included
 
-If all verifications pass, proceed to JENKINS.md for the assignment.
+✅ Docker CLI
+✅ kubectl
+✅ Git
+✅ Required plugins
+
+---
+
+## Stop/Start
+
+```bash
+# Method 1
+docker-compose down
+docker-compose up -d
+
+# Method 2
+docker stop jenkins
+docker start jenkins
+```
+
+---
+
+Done! Proceed to JENKINS.md for the assignment.
